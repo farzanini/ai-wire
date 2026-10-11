@@ -21,7 +21,6 @@
 
   { "name": "Databricks", "topic": "Big data", "url": "https://www.databricks.com/feed" },
   { "name": "AWS Big Data", "topic": "Big data", "url": "https://aws.amazon.com/blogs/big-data/feed/" },
-  { "name": "BigDATAwire", "topic": "Big data", "url": "https://www.bigdatawire.com/feed/" },
   { "name": "KDnuggets", "topic": "Big data", "url": "https://www.kdnuggets.com/feed" },
   { "name": "InfoQ", "topic": "Big data", "url": "https://feed.infoq.com/ai-ml-data-eng/" },
   { "name": "Confluent", "topic": "Big data", "url": "https://www.confluent.io/rss.xml" },
@@ -30,8 +29,6 @@
   { "name": "AI Business", "topic": "Business", "url": "https://aibusiness.com/rss.xml" },
   { "name": "Crunchbase News", "topic": "Business", "url": "https://news.crunchbase.com/sections/ai/feed/" },
   { "name": "SiliconANGLE", "topic": "Business", "url": "https://siliconangle.com/category/ai/feed/" },
-  { "name": "Fortune", "topic": "Business", "url": "https://fortune.com/section/artificial-intelligence/feed/" },
-  { "name": "AI News", "topic": "Business", "url": "https://www.artificialintelligence-news.com/feed/" },
 
   { "name": "Nature Machine Intelligence", "section": "papers", "url": "https://www.nature.com/natmachintell.rss" },
   { "name": "Nature", "section": "papers", "url": "https://www.nature.com/subjects/machine-learning.rss" },
