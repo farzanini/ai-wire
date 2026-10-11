@@ -104,6 +104,41 @@ async function load(feed) {
   return items;
 }
 
+// YouTube's feeds carry no video length, so read it from each watch page.
+// Lengths found on earlier runs are reused from the live site, so only new videos are looked up.
+async function videoLengths(stories) {
+  const vids = stories.filter((s) => s.video);
+  const [owner, repo] = (process.env.GITHUB_REPOSITORY || "").split("/");
+  if (owner) {
+    try {
+      const prev = await (await fetch(`https://${owner}.github.io/${repo}/data/stories.json`, { signal: AbortSignal.timeout(15000) })).json();
+      const known = new Map(prev.stories.filter((s) => s.video && s.duration).map((s) => [s.video, s.duration]));
+      for (const s of vids) if (known.has(s.video)) s.duration = known.get(s.video);
+    } catch { /* first run, or the site is unreachable */ }
+  }
+  const todo = vids.filter((s) => !s.duration);
+  let found = 0;
+  const worker = async () => {
+    for (let s; (s = todo.pop()); ) {
+      try {
+        const res = await fetch("https://www.youtube.com/watch?v=" + s.video, {
+          headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36", "accept-language": "en-US,en;q=0.9", cookie: "CONSENT=YES+1; SOCS=CAI" },
+          signal: AbortSignal.timeout(15000),
+        });
+        const secs = +((await res.text()).match(/"lengthSeconds":"(\d+)"/) || [])[1];
+        if (secs > 0) {
+          const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), sec = String(secs % 60).padStart(2, "0");
+          s.duration = h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+          found++;
+        }
+      } catch { /* leave this one without a length */ }
+    }
+  };
+  const need = todo.length;
+  await Promise.all(Array.from({ length: 5 }, worker));
+  console.log(`Video lengths: ${vids.length - need} reused, ${found} of ${need} looked up.`);
+}
+
 if (import.meta.url === `file://${process.argv[1]}`) {
   const status = [];
   const seen = new Set();
@@ -118,6 +153,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   stories.sort((a, b) => (a.date < b.date ? 1 : -1));
   console.table(status);
+  await videoLengths(stories);
   if (!stories.length) { console.error("No stories fetched from any feed; keeping the previous build."); process.exit(1); }
   await mkdir(new URL("dist/data/", ROOT), { recursive: true });
   await writeFile(new URL("dist/data/stories.json", ROOT), JSON.stringify({ updatedAt: new Date().toISOString(), feeds: status, stories }));

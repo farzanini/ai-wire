@@ -182,7 +182,7 @@ export default function App() {
       <Badge variant="secondary" className="font-mono uppercase tracking-wider">{story.source}</Badge>
       <h1 dir={rtl ? "rtl" : undefined} className={cn("mt-4 text-[clamp(1.7rem,3.4vw,2.35rem)] font-semibold text-balance", rtl ? "font-fa leading-[1.5]" : "font-serif leading-[1.14]")}>{shown?.title || story.title}</h1>
       <p className="mt-3 border-b pb-5 font-mono text-xs text-muted-foreground">
-        {story.authors ? story.authors + " · " : ""}{dayLabel(story.date)}{story.section === "papers" ? "" : story.section === "podcasts" ? (story.duration ? " · " + story.duration : "") : " · " + clock(story.date)}
+        {story.authors ? story.authors + " · " : ""}{dayLabel(story.date)}{story.section === "papers" ? "" : story.section === "podcasts" || story.section === "videos" ? (story.duration ? " · " + story.duration : "") : " · " + clock(story.date)}
       </p>
       {story.video && <VideoBox key={story.id} id={story.video} title={story.title} onPlay={() => setPlaying(null)} />}
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
@@ -359,10 +359,15 @@ export default function App() {
                         </AnimatePresence>
                       </span>
                       <span className={cn("min-w-0", s.video && "flex gap-3")}>
-                        {s.video && <img src={"https://i.ytimg.com/vi/" + s.video + "/mqdefault.jpg"} alt="" loading="lazy" className="aspect-video w-24 flex-none self-start rounded-md bg-muted object-cover" />}
+                        {s.video && (
+                          <span className="relative w-24 flex-none self-start">
+                            <img src={"https://i.ytimg.com/vi/" + s.video + "/mqdefault.jpg"} alt="" loading="lazy" className="aspect-video w-full rounded-md bg-muted object-cover" />
+                            {s.duration && <span className="absolute right-1 bottom-1 rounded bg-black/80 px-1 font-mono text-[10px] leading-4 text-white tabular-nums">{s.duration}</span>}
+                          </span>
+                        )}
                         <span className="min-w-0">
                         <span className={cn("block leading-snug text-pretty transition-colors duration-300", isRead ? "font-normal text-muted-foreground" : "font-semibold")}>{s.title}</span>
-                        <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {vids ? dayLabel(s.date) : pods ? (s.duration || "Episode") : papers ? (s.authors || "Peer-reviewed") : clock(s.date)}</span>
+                        <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {vids ? (s.duration ? s.duration + " · " + dayLabel(s.date) : dayLabel(s.date)) : pods ? (s.duration || "Episode") : papers ? (s.authors || "Peer-reviewed") : clock(s.date)}</span>
                       </span>
                       </span>
                     </motion.button>
