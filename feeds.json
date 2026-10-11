@@ -45,12 +45,7 @@
   {"name": "Google DeepMind: The Podcast", "section": "podcasts", "url": "https://feeds.simplecast.com/JT6pbPkg"},
   {"name": "No Priors", "section": "podcasts", "url": "https://feeds.megaphone.fm/nopriors"},
   {"name": "The Cognitive Revolution", "section": "podcasts", "url": "https://feeds.megaphone.fm/RINTP3108857801"},
-  {"name": "Latent Space", "section": "podcasts", "url": "https://api.substack.com/feed/podcast/1084089.rss"},
-  {"name": "Dwarkesh Podcast", "section": "podcasts", "url": "https://api.substack.com/feed/podcast/69345.rss"},
   {"name": "Last Week in AI", "section": "podcasts", "url": "https://lastweekin.ai/feed"},
   {"name": "Eye on AI", "section": "podcasts", "url": "https://aneyeonai.libsyn.com/rss"},
-  {"name": "Data Skeptic", "section": "podcasts", "url": "https://dataskeptic.libsyn.com/rss"},
-  {"name": "Data Engineering Podcast", "section": "podcasts", "url": "https://www.dataengineeringpodcast.com/feed/mp3/"},
-  {"name": "Super Data Science", "section": "podcasts", "url": "https://feeds.megaphone.fm/superdatascience"},
-  {"name": "AI + a16z", "section": "podcasts", "url": "https://feeds.simplecast.com/3GYg5P1O"}
+  {"name": "Data Skeptic", "section": "podcasts", "url": "https://dataskeptic.libsyn.com/rss"}
 ]
