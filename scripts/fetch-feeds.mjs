@@ -117,26 +117,47 @@ async function videoLengths(stories) {
     } catch { /* first run, or the site is unreachable */ }
   }
   const todo = vids.filter((s) => !s.duration);
-  let found = 0;
+  const need = todo.length;
+  const diag = { reused: vids.length - need, need, found: 0, via: {}, sample: null };
+  const fmt = (secs) => {
+    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), sec = String(secs % 60).padStart(2, "0");
+    return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
+  };
+  const ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
+  const ways = {
+    async page(id) {
+      const res = await fetch("https://www.youtube.com/watch?v=" + id, {
+        headers: { "user-agent": ua, "accept-language": "en-US,en;q=0.9", cookie: "CONSENT=YES+1; SOCS=CAI" }, signal: AbortSignal.timeout(15000),
+      });
+      const html = await res.text();
+      const iso = html.match(/itemprop="duration" content="PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?"/);
+      const secs = +(html.match(/"lengthSeconds":"(\d+)"/) || [])[1] || Math.round(+(html.match(/"approxDurationMs":"(\d+)"/) || [])[1] / 1000)
+        || (iso ? (+iso[1] || 0) * 3600 + (+iso[2] || 0) * 60 + (+iso[3] || 0) : 0);
+      if (!secs && !diag.sample) diag.sample = { way: "page", http: res.status, url: res.url.slice(0, 80), bytes: html.length, title: (html.match(/<title>([^<]*)/) || [])[1] };
+      return secs;
+    },
+    async player(id) {
+      const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
+        method: "POST", headers: { "content-type": "application/json", "user-agent": ua }, signal: AbortSignal.timeout(15000),
+        body: JSON.stringify({ videoId: id, context: { client: { clientName: "WEB", clientVersion: "2.20240726.00.00", hl: "en" } } }),
+      });
+      const d = await res.json();
+      return +d?.videoDetails?.lengthSeconds || 0;
+    },
+  };
   const worker = async () => {
     for (let s; (s = todo.pop()); ) {
-      try {
-        const res = await fetch("https://www.youtube.com/watch?v=" + s.video, {
-          headers: { "user-agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36", "accept-language": "en-US,en;q=0.9", cookie: "CONSENT=YES+1; SOCS=CAI" },
-          signal: AbortSignal.timeout(15000),
-        });
-        const secs = +((await res.text()).match(/"lengthSeconds":"(\d+)"/) || [])[1];
-        if (secs > 0) {
-          const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), sec = String(secs % 60).padStart(2, "0");
-          s.duration = h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
-          found++;
-        }
-      } catch { /* leave this one without a length */ }
+      for (const [name, way] of Object.entries(ways)) {
+        try {
+          const secs = await way(s.video);
+          if (secs > 0) { s.duration = fmt(secs); diag.found++; diag.via[name] = (diag.via[name] || 0) + 1; break; }
+        } catch (e) { if (!diag.sample) diag.sample = { way: name, error: String(e?.message || e) }; }
+      }
     }
   };
-  const need = todo.length;
   await Promise.all(Array.from({ length: 5 }, worker));
-  console.log(`Video lengths: ${vids.length - need} reused, ${found} of ${need} looked up.`);
+  console.log("Video lengths:", JSON.stringify(diag));
+  return diag;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -153,9 +174,9 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   });
   stories.sort((a, b) => (a.date < b.date ? 1 : -1));
   console.table(status);
-  await videoLengths(stories);
+  const videoInfo = await videoLengths(stories);
   if (!stories.length) { console.error("No stories fetched from any feed; keeping the previous build."); process.exit(1); }
   await mkdir(new URL("dist/data/", ROOT), { recursive: true });
-  await writeFile(new URL("dist/data/stories.json", ROOT), JSON.stringify({ updatedAt: new Date().toISOString(), feeds: status, stories }));
+  await writeFile(new URL("dist/data/stories.json", ROOT), JSON.stringify({ updatedAt: new Date().toISOString(), videoInfo, feeds: status, stories }));
   console.log(`Wrote ${stories.length} stories.`);
 }
