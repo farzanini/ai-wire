@@ -7,11 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-type Section = "news" | "papers" | "podcasts";
-type Story = { id: string; title: string; source: string; url: string; date: string; summary: string; section?: Section; topic?: string; authors?: string; audio?: string; duration?: string };
+type Section = "news" | "papers" | "podcasts" | "videos";
+type Story = { id: string; title: string; source: string; url: string; date: string; summary: string; section?: Section; topic?: string; authors?: string; audio?: string; duration?: string; video?: string };
 
 const TOPICS = ["AI", "Machine learning", "Big data", "Business"];
-const SECTIONS: { id: Section; label: string }[] = [{ id: "news", label: "News" }, { id: "papers", label: "Papers" }, { id: "podcasts", label: "Podcasts" }];
+const SECTIONS: { id: Section; label: string }[] = [{ id: "news", label: "News" }, { id: "papers", label: "Papers" }, { id: "podcasts", label: "Podcasts" }, { id: "videos", label: "Videos" }];
 
 const store = {
   get<T>(key: string, fallback: T): T {
@@ -47,7 +47,7 @@ export default function App() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const [updated, setUpdated] = useState("");
-  const [section, setSection] = useState<Section>(() => { const v = store.get<string>("aiwire.section", "news"); return v === "papers" || v === "podcasts" ? v : "news"; });
+  const [section, setSection] = useState<Section>(() => { const v = store.get<string>("aiwire.section", "news"); return v === "papers" || v === "podcasts" || v === "videos" ? v : "news"; });
   const [playing, setPlaying] = useState<Story | null>(null);
   const [filter, setFilter] = useState("All");
   const [current, setCurrent] = useState<string | null>(null);
@@ -88,7 +88,8 @@ export default function App() {
 
   const papers = section === "papers";
   const pods = section === "podcasts";
-  const bySource = papers || pods;
+  const vids = section === "videos";
+  const bySource = papers || pods || vids;
   const inSection = useMemo(() => stories.filter((s) => (s.section || "news") === section), [stories, section]);
   const chips = useMemo(() => {
     const groups = bySource
@@ -101,7 +102,7 @@ export default function App() {
     [inSection, filter, read, current, bySource]
   );
   const unreadBy = useMemo(() => {
-    const n: Record<Section, number> = { news: 0, papers: 0, podcasts: 0 };
+    const n: Record<Section, number> = { news: 0, papers: 0, podcasts: 0, videos: 0 };
     stories.forEach((s) => { if (!read[s.id]) n[s.section || "news"]++; });
     return n;
   }, [stories, read]);
@@ -183,6 +184,7 @@ export default function App() {
       <p className="mt-3 border-b pb-5 font-mono text-xs text-muted-foreground">
         {story.authors ? story.authors + " · " : ""}{dayLabel(story.date)}{story.section === "papers" ? "" : story.section === "podcasts" ? (story.duration ? " · " + story.duration : "") : " · " + clock(story.date)}
       </p>
+      {story.video && <VideoBox key={story.id} id={story.video} title={story.title} onPlay={() => setPlaying(null)} />}
       <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
         <Button variant={trOn ? "secondary" : "outline"} size="sm" onClick={toggleTr} aria-pressed={trOn}>
           {trState === "busy" ? <LoaderCircle className="animate-spin" /> : <Languages />}
@@ -200,10 +202,14 @@ export default function App() {
         initial={{ opacity: 0, y: shown ? 6 : 0 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: shown ? 0 : 0.12, duration: 0.4 }}
         className={cn("mt-6 text-[1.2rem]", rtl ? "font-fa leading-[2]" : "font-serif leading-[1.62]")}
       >
-        {shown?.summary || story.summary || (story.section === "podcasts" ? "The show's feed gave no description for this episode." : story.section === "papers" ? "The journal's feed gave no abstract for this paper." : "The publisher's feed gave no excerpt for this story.")}
+        {shown?.summary || story.summary || (story.section === "videos" ? "The channel gave no description for this video." : story.section === "podcasts" ? "The show's feed gave no description for this episode." : story.section === "papers" ? "The journal's feed gave no abstract for this paper." : "The publisher's feed gave no excerpt for this story.")}
       </motion.p>
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.35, ease }} className="mt-8">
-        {story.audio ? (
+        {story.video ? (
+          <Button asChild size="lg" variant="outline">
+            <a href={story.url} target="_blank" rel="noopener">Open on YouTube <ArrowUpRight /></a>
+          </Button>
+        ) : story.audio ? (
           <div className="flex flex-wrap gap-2">
             <Button size="lg" onClick={() => setPlaying(story)} disabled={playing?.id === story.id}>
               <Play className="fill-current" /> {playing?.id === story.id ? "Playing now" : "Play episode"}
@@ -227,7 +233,9 @@ export default function App() {
             </Button>
           </div>
         )}
-        <p className="mt-4 text-[13px] text-muted-foreground">{story.section === "podcasts"
+        <p className="mt-4 text-[13px] text-muted-foreground">{story.section === "videos"
+            ? "This is the channel's own description. The video plays from YouTube."
+            : story.section === "podcasts"
             ? "This is the show's own episode description. The episode plays from the show's host and keeps playing while you browse."
             : story.section === "papers"
             ? "This is the journal's own abstract or excerpt. The button opens the published paper on the journal's site."
@@ -242,7 +250,7 @@ export default function App() {
   return (
     <div className="flex h-dvh flex-col pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)]">
      <div className="relative flex min-h-0 flex-1 flex-col">
-      <header className="flex items-center gap-2 border-b bg-card px-4 py-2.5">
+      <header className="flex flex-wrap items-center gap-2 border-b bg-card px-4 py-2.5">
         <motion.span
           initial={{ rotate: -30, scale: 0.6, opacity: 0 }} animate={{ rotate: 0, scale: 1, opacity: 1 }}
           transition={{ type: "spring", stiffness: 260, damping: 16 }}
@@ -250,20 +258,20 @@ export default function App() {
         >
           <Rss className="size-4" strokeWidth={2.6} />
         </motion.span>
-        <span className="hidden text-base font-semibold tracking-tight sm:inline">AI Wire</span>
-        <div role="tablist" aria-label="Section" className="ml-1 flex rounded-lg bg-muted p-0.5 sm:ml-3">
+        <span className="text-base font-semibold tracking-tight">AI Wire</span>
+        <div role="tablist" aria-label="Section" className="order-last flex w-full rounded-lg bg-muted p-0.5 sm:order-none sm:ml-3 sm:w-auto">
           {SECTIONS.map((t) => (
             <button
               key={t.id} type="button" role="tab" aria-selected={section === t.id} onClick={() => pick(t.id)}
-              className={cn("relative rounded-md px-2 py-1 text-[13px] font-medium sm:px-3 transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+              className={cn("relative flex-1 rounded-md px-2 py-1 text-[13px] font-medium sm:flex-none sm:px-3 transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
                 section === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
             >
               {section === t.id && (
                 <motion.span layoutId="tab" className="absolute inset-0 rounded-md bg-card shadow-sm" transition={{ type: "spring", stiffness: 420, damping: 34 }} />
               )}
-              <span className="relative flex items-center gap-1.5">
+              <span className="relative flex items-center justify-center gap-1.5">
                 {t.label}
-                {status === "ready" && unreadBy[t.id] > 0 && <span className="hidden font-mono text-[11px] text-primary tabular-nums sm:inline">{unreadBy[t.id]}</span>}
+                {status === "ready" && unreadBy[t.id] > 0 && <span className="font-mono text-[11px] text-primary tabular-nums">{unreadBy[t.id]}</span>}
               </span>
             </button>
           ))}
@@ -318,7 +326,7 @@ export default function App() {
             </Empty>
           )}
           {status === "ready" && !visible.length && (
-            <Empty>{inSection.length ? "Nothing here. You have read everything in this view." : pods ? "No episodes yet. Refresh in a little while." : papers ? "No papers yet. Refresh in a little while." : "No headlines yet. Refresh in a little while."}</Empty>
+            <Empty>{inSection.length ? "Nothing here. You have read everything in this view." : vids ? "No videos yet. Refresh in a little while." : pods ? "No episodes yet. Refresh in a little while." : papers ? "No papers yet. Refresh in a little while." : "No headlines yet. Refresh in a little while."}</Empty>
           )}
           {status === "ready" && visible.length > 0 && (
             <div key={section + filter}>
@@ -350,9 +358,12 @@ export default function App() {
                           {!isRead && <motion.span exit={{ scale: 0, opacity: 0 }} transition={{ duration: 0.25 }} className="size-2 rounded-full bg-primary" />}
                         </AnimatePresence>
                       </span>
-                      <span className="min-w-0">
+                      <span className={cn("min-w-0", s.video && "flex gap-3")}>
+                        {s.video && <img src={"https://i.ytimg.com/vi/" + s.video + "/mqdefault.jpg"} alt="" loading="lazy" className="aspect-video w-24 flex-none self-start rounded-md bg-muted object-cover" />}
+                        <span className="min-w-0">
                         <span className={cn("block leading-snug text-pretty transition-colors duration-300", isRead ? "font-normal text-muted-foreground" : "font-semibold")}>{s.title}</span>
-                        <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {pods ? (s.duration || "Episode") : papers ? (s.authors || "Peer-reviewed") : clock(s.date)}</span>
+                        <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {vids ? dayLabel(s.date) : pods ? (s.duration || "Episode") : papers ? (s.authors || "Peer-reviewed") : clock(s.date)}</span>
+                      </span>
                       </span>
                     </motion.button>
                   </div>
@@ -417,6 +428,30 @@ export default function App() {
         )}
       </AnimatePresence>
     </div>
+  );
+}
+
+function VideoBox({ id, title, onPlay }: { id: string; title: string; onPlay: () => void }) {
+  const [on, setOn] = useState(false);
+  return (
+    <motion.div initial={{ opacity: 0, scale: 0.98 }} animate={{ opacity: 1, scale: 1 }} transition={{ duration: 0.35, ease }} className="mt-5 aspect-video w-full overflow-hidden rounded-lg border bg-muted">
+      {on ? (
+        <iframe
+          className="size-full" title={title} allowFullScreen
+          src={"https://www.youtube-nocookie.com/embed/" + id + "?autoplay=1&rel=0"}
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+        />
+      ) : (
+        <button type="button" onClick={() => { onPlay(); setOn(true); }} aria-label={"Play video: " + title} className="group relative block size-full outline-none">
+          <img src={"https://i.ytimg.com/vi/" + id + "/hqdefault.jpg"} alt="" className="size-full object-cover" />
+          <span className="absolute inset-0 grid place-items-center bg-black/25 transition-colors group-hover:bg-black/10">
+            <span className="grid size-16 place-items-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform group-hover:scale-110 group-focus-visible:scale-110">
+              <Play className="ml-1 size-7 fill-current" />
+            </span>
+          </span>
+        </button>
+      )}
+    </motion.div>
   );
 }
 

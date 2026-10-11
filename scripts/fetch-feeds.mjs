@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 
 const ROOT = new URL("..", import.meta.url);
 const FEEDS = JSON.parse(await readFile(new URL("feeds.json", ROOT), "utf8"));
-const KEEP_DAYS = { news: 14, papers: 120, podcasts: 45 };
+const KEEP_DAYS = { news: 14, papers: 120, podcasts: 45, videos: 45 };
 const PER_FEED = 40;
 const SUMMARY_MAX = 700;
 
@@ -66,7 +66,7 @@ export function parse(xml, feed) {
     const url = link(b).trim() || (section === "podcasts" ? audio : "");
     const when = new Date(text(tag(b, ["pubDate", "published", "updated", "dc:date", "prism:publicationDate"])));
     if (!title || !/^https?:\/\//.test(url) || isNaN(when)) continue;
-    let summary = text(tag(b, ["description", "summary", "content:encoded", "content"]));
+    let summary = text(tag(b, ["description", "summary", "content:encoded", "content", "media:description"]));
     summary = summary.replace(/\s*(Read more|Continue reading|The post .* appeared first on .*)\.?\s*$/i, "").trim();
     const item = {
       id: createHash("sha1").update(url).digest("hex").slice(0, 12),
@@ -76,6 +76,10 @@ export function parse(xml, feed) {
     if (section === "papers") {
       const names = [...b.matchAll(/<(dc:creator|author)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi)].map((m) => text(tag(m[2], ["name"]) || m[2])).filter(Boolean);
       if (names.length) item.authors = names.length > 4 ? names.slice(0, 3).join(", ") + " et al." : names.join(", ");
+    } else if (section === "videos") {
+      const vid = text(tag(b, ["yt:videoId"]));
+      if (!/^[\w-]{6,20}$/.test(vid) || /\/shorts\//.test(url)) continue;
+      item.video = vid;
     } else if (section === "podcasts") {
       if (!/^https:\/\//.test(audio)) continue;          // episodes without playable audio are skipped
       item.audio = audio;
@@ -94,7 +98,10 @@ async function load(feed) {
     signal: AbortSignal.timeout(20000),
   });
   if (!res.ok) throw new Error("HTTP " + res.status);
-  return parse(await res.text(), feed);
+  const xml = await res.text();
+  const items = parse(xml, feed);
+  items.feedTitle = text(tag(xml.slice(0, xml.search(/<(item|entry)\b/i) >>> 0), ["title"]));
+  return items;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -106,7 +113,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const name = FEEDS[i].name;
     if (r.status === "rejected") { status.push({ name, url: FEEDS[i].url, ok: false, error: String(r.reason?.message || r.reason) }); return; }
     const fresh = r.value.filter((s) => Date.parse(s.date) >= Date.now() - KEEP_DAYS[s.section] * 864e5 && Date.parse(s.date) <= Date.now() + 864e5);
-    status.push({ name, ok: true, count: fresh.length });
+    status.push({ name, ok: true, count: fresh.length, title: r.value.feedTitle });
     for (const s of fresh) if (!seen.has(s.id)) { seen.add(s.id); stories.push(s); }
   });
   stories.sort((a, b) => (a.date < b.date ? 1 : -1));
