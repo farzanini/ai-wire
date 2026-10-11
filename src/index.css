@@ -62,6 +62,7 @@
   --font-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, monospace;
   --font-serif: "Newsreader", Georgia, serif;
+  --font-fa: "Vazirmatn", "Geist", Tahoma, sans-serif;
 }
 
 @layer base {

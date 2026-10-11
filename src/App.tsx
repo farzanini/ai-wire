@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowUpRight, CheckCheck, Moon, RefreshCw, Rss, Sun } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, RefreshCw, Rss, Sun } from "lucide-react";
+import { TARGET, translate, translatedPage } from "@/lib/translate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -52,6 +53,9 @@ export default function App() {
   const [read, setRead] = useState<Record<string, 1>>(() => store.get("aiwire.read", {}));
   const [dark, setDark] = useState(() => document.documentElement.classList.contains("dark"));
   const desktop = useDesktop();
+  const [trOn, setTrOn] = useState(() => store.get("aiwire.translate", false));
+  const [tr, setTr] = useState<Record<string, { title: string; summary: string }>>({});
+  const [trState, setTrState] = useState<"idle" | "busy" | "failed">("idle");
   const readerRef = useRef<HTMLDivElement>(null);
 
   const load = useCallback(() => {
@@ -143,6 +147,20 @@ export default function App() {
   };
   const toggleTheme = () => { store.set("aiwire.theme", dark ? "light" : "dark"); setDark(!dark); };
 
+  // While translation is switched on, translate each story as it is opened.
+  useEffect(() => {
+    if (!trOn || !story || tr[story.id]) { setTrState("idle"); return; }
+    let live = true;
+    setTrState("busy");
+    translate(story.summary ? [story.title, story.summary] : [story.title])
+      .then(([title, summary = ""]) => { if (live) { setTr((m) => ({ ...m, [story.id]: { title, summary } })); setTrState("idle"); } })
+      .catch(() => { if (live) setTrState("failed"); });
+    return () => { live = false; };
+  }, [trOn, story, tr]);
+  const toggleTr = () => { store.set("aiwire.translate", !trOn); setTrOn(!trOn); };
+  const shown = trOn && story ? tr[story.id] : undefined;
+  const rtl = !!shown && TARGET.rtl;
+
   let lastDay = "";
 
   const article = story && (
@@ -153,15 +171,28 @@ export default function App() {
       className="mx-auto max-w-[64ch]"
     >
       <Badge variant="secondary" className="font-mono uppercase tracking-wider">{story.source}</Badge>
-      <h1 className="mt-4 font-serif text-[clamp(1.7rem,3.4vw,2.35rem)] leading-[1.14] font-semibold text-balance">{story.title}</h1>
+      <h1 dir={rtl ? "rtl" : undefined} className={cn("mt-4 text-[clamp(1.7rem,3.4vw,2.35rem)] font-semibold text-balance", rtl ? "font-fa leading-[1.5]" : "font-serif leading-[1.14]")}>{shown?.title || story.title}</h1>
       <p className="mt-3 border-b pb-5 font-mono text-xs text-muted-foreground">
         {story.authors ? story.authors + " · " : ""}{dayLabel(story.date)}{story.section === "papers" ? "" : " · " + clock(story.date)}
       </p>
+      <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+        <Button variant={trOn ? "secondary" : "outline"} size="sm" onClick={toggleTr} aria-pressed={trOn}>
+          {trState === "busy" ? <LoaderCircle className="animate-spin" /> : <Languages />}
+          {trOn ? "Show original" : "Translate to " + TARGET.name}
+        </Button>
+        {trState === "failed" && (
+          <span className="text-[13px] text-muted-foreground">
+            Translation is not available right now.{" "}
+            <a className="text-primary underline underline-offset-4" href={translatedPage(story.url)} target="_blank" rel="noopener">Open the article in Google Translate</a>
+          </span>
+        )}
+      </div>
       <motion.p
-        initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12, duration: 0.4 }}
-        className="mt-6 font-serif text-[1.2rem] leading-[1.62]"
+        key={shown ? "tr" : "orig"} dir={rtl ? "rtl" : undefined}
+        initial={{ opacity: 0, y: shown ? 6 : 0 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: shown ? 0 : 0.12, duration: 0.4 }}
+        className={cn("mt-6 text-[1.2rem]", rtl ? "font-fa leading-[2]" : "font-serif leading-[1.62]")}
       >
-        {story.summary || (story.section === "papers" ? "The journal's feed gave no abstract for this paper." : "The publisher's feed gave no excerpt for this story.")}
+        {shown?.summary || story.summary || (story.section === "papers" ? "The journal's feed gave no abstract for this paper." : "The publisher's feed gave no excerpt for this story.")}
       </motion.p>
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.35, ease }} className="mt-8">
         <Button asChild size="lg" className="group">
@@ -169,6 +200,9 @@ export default function App() {
             {story.section === "papers" ? "Read the paper at " : "Read the full story at "}{story.source}
             <ArrowUpRight className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </a>
+        </Button>
+        <Button asChild variant="outline" size="lg" className="mt-2 sm:mt-0 sm:ml-2">
+          <a href={translatedPage(story.url)} target="_blank" rel="noopener"><Languages /> Full article in {TARGET.name}</a>
         </Button>
         <p className="mt-4 text-[13px] text-muted-foreground">{story.section === "papers"
             ? "This is the journal's own abstract or excerpt. The button opens the published paper on the journal's site."
