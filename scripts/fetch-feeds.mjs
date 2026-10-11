@@ -1,4 +1,4 @@
-// Fetches the AI news feeds listed in feeds.json and writes site/data/stories.json.
+// Fetches the AI news feeds listed in feeds.json and writes dist/data/stories.json.
 // No dependencies: Node 20+ only.
 import { readFile, writeFile, mkdir } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -100,7 +100,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   stories.sort((a, b) => (a.date < b.date ? 1 : -1));
   console.table(status);
   if (!stories.length) { console.error("No stories fetched from any feed; keeping the previous build."); process.exit(1); }
-  await mkdir(new URL("site/data/", ROOT), { recursive: true });
-  await writeFile(new URL("site/data/stories.json", ROOT), JSON.stringify({ updatedAt: new Date().toISOString(), feeds: status, stories }));
+  await mkdir(new URL("dist/data/", ROOT), { recursive: true });
+  await writeFile(new URL("dist/data/stories.json", ROOT), JSON.stringify({ updatedAt: new Date().toISOString(), feeds: status, stories }));
   console.log(`Wrote ${stories.length} stories.`);
 }

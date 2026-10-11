@@ -1,1 +1,3 @@
-site/data/stories.json
+node_modules
+dist
+public/data/stories.json

@@ -26,12 +26,15 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build
       - name: Fetch feeds
         run: node scripts/fetch-feeds.mjs
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: site
+          path: dist
       - id: deploy
         uses: actions/deploy-pages@v4

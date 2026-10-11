@@ -1,5 +1,5 @@
 // Network first, cache as a fallback, so the last loaded headlines stay readable offline.
-const CACHE = "aiwire-v1";
+const CACHE = "aiwire-v2";
 self.addEventListener("install", (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(["./", "manifest.webmanifest", "icon-192.png"])).then(() => self.skipWaiting()));
 });
