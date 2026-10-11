@@ -8,7 +8,9 @@
   --foreground: oklch(0.2 0.02 255);
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.2 0.02 255);
-  --primary: oklch(0.62 0.18 42);
+  --hue: 275;
+  --chroma: 0.2;
+  --primary: oklch(0.55 var(--chroma) var(--hue));
   --primary-foreground: oklch(0.99 0 0);
   --secondary: oklch(0.955 0.006 250);
   --secondary-foreground: oklch(0.25 0.02 255);
@@ -18,7 +20,7 @@
   --accent-foreground: oklch(0.25 0.02 255);
   --border: oklch(0.9 0.008 250);
   --input: oklch(0.9 0.008 250);
-  --ring: oklch(0.62 0.18 42);
+  --ring: oklch(0.55 var(--chroma) var(--hue));
 }
 .dark {
   color-scheme: dark;
@@ -26,8 +28,8 @@
   --foreground: oklch(0.95 0.005 250);
   --card: oklch(0.21 0.014 255);
   --card-foreground: oklch(0.95 0.005 250);
-  --primary: oklch(0.74 0.15 50);
-  --primary-foreground: oklch(0.18 0.02 50);
+  --primary: oklch(0.77 calc(var(--chroma) * 0.72) var(--hue));
+  --primary-foreground: oklch(0.18 0.03 var(--hue));
   --secondary: oklch(0.27 0.014 255);
   --secondary-foreground: oklch(0.95 0.005 250);
   --muted: oklch(0.27 0.014 255);
@@ -36,8 +38,16 @@
   --accent-foreground: oklch(0.95 0.005 250);
   --border: oklch(1 0 0 / 11%);
   --input: oklch(1 0 0 / 15%);
-  --ring: oklch(0.74 0.15 50);
+  --ring: oklch(0.77 calc(var(--chroma) * 0.72) var(--hue));
 }
+
+/* Accent colours picked in the app. Indigo is the default. */
+[data-accent="blue"] { --hue: 250; --chroma: 0.19; }
+[data-accent="teal"] { --hue: 195; --chroma: 0.11; }
+[data-accent="green"] { --hue: 155; --chroma: 0.15; }
+[data-accent="rose"] { --hue: 8; --chroma: 0.2; }
+[data-accent="violet"] { --hue: 310; --chroma: 0.2; }
+[data-accent="graphite"] { --hue: 255; --chroma: 0.02; }
 
 @theme inline {
   --color-background: var(--background);

@@ -14,7 +14,9 @@
 <script>
 (function(){var t=null;try{t=localStorage.getItem("aiwire.theme")}catch(e){}
 var dark=t?t==="dark":matchMedia("(prefers-color-scheme: dark)").matches;
-if(dark)document.documentElement.classList.add("dark")})();
+if(dark)document.documentElement.classList.add("dark");
+var a=null;try{a=JSON.parse(localStorage.getItem("aiwire.accent"))}catch(e){}
+if(typeof a==="string"&&/^[a-z]+$/.test(a))document.documentElement.dataset.accent=a})();
 </script>
 </head>
 <body>

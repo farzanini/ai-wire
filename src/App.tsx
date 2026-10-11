@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, Play, RefreshCw, Rss, SlidersHorizontal, Sun, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, Palette, Play, RefreshCw, Rss, SlidersHorizontal, Sun, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TARGET, translate, translatedPage } from "@/lib/translate";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,15 @@ type Section = "news" | "papers" | "podcasts" | "videos";
 type Story = { id: string; title: string; source: string; url: string; date: string; summary: string; section?: Section; topic?: string; authors?: string; audio?: string; duration?: string; video?: string };
 
 const TOPICS = ["AI", "Machine learning", "Big data", "Business"];
+const ACCENTS = [
+  { id: "indigo", label: "Indigo", hue: 275, chroma: 0.2 },
+  { id: "blue", label: "Blue", hue: 250, chroma: 0.19 },
+  { id: "teal", label: "Teal", hue: 195, chroma: 0.11 },
+  { id: "green", label: "Green", hue: 155, chroma: 0.15 },
+  { id: "rose", label: "Rose", hue: 8, chroma: 0.2 },
+  { id: "violet", label: "Violet", hue: 310, chroma: 0.2 },
+  { id: "graphite", label: "Graphite", hue: 255, chroma: 0.02 },
+];
 const SECTIONS: { id: Section; label: string }[] = [{ id: "news", label: "News" }, { id: "papers", label: "Papers" }, { id: "podcasts", label: "Podcasts" }, { id: "videos", label: "Videos" }];
 
 const store = {
@@ -93,6 +102,17 @@ export default function App() {
   const bySource = papers || pods || vids;
   const [hidden, setHidden] = useState<Record<string, 1>>(() => store.get("aiwire.hidden", {}));
   const [picker, setPicker] = useState(false);
+  const [accent, setAccent] = useState(() => { const a = store.get<string>("aiwire.accent", "indigo"); return ACCENTS.some((x) => x.id === a) ? a : "indigo"; });
+  const [palette, setPalette] = useState(false);
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const pickAccent = (id: string) => { setAccent(id); store.set("aiwire.accent", id); document.documentElement.dataset.accent = id; };
+  useEffect(() => {
+    if (!palette) return;
+    const down = (e: PointerEvent) => { if (!paletteRef.current?.contains(e.target as Node)) setPalette(false); };
+    const key = (e: KeyboardEvent) => { if (e.key === "Escape") setPalette(false); };
+    document.addEventListener("pointerdown", down); document.addEventListener("keydown", key);
+    return () => { document.removeEventListener("pointerdown", down); document.removeEventListener("keydown", key); };
+  }, [palette]);
   const allInSection = useMemo(() => stories.filter((s) => (s.section || "news") === section), [stories, section]);
   const inSection = useMemo(() => allInSection.filter((s) => !hidden[section + "|" + s.source]), [allInSection, hidden, section]);
   // Every source of this section with its story count, grouped by topic for news.
@@ -319,6 +339,36 @@ export default function App() {
           <Button variant="ghost" size="icon" onClick={load} disabled={busy} aria-label="Refresh headlines" title="Refresh">
             <RefreshCw className={cn(busy && "animate-spin")} />
           </Button>
+          <div ref={paletteRef} className="relative">
+            <Button variant="ghost" size="icon" onClick={() => setPalette((v) => !v)} aria-label="Change colour" aria-expanded={palette} title="Change colour">
+              <Palette />
+            </Button>
+            <AnimatePresence>
+              {palette && (
+                <motion.div
+                  role="dialog" aria-label="Accent colour"
+                  initial={{ opacity: 0, scale: 0.9, y: -6 }} animate={{ opacity: 1, scale: 1, y: 0 }} exit={{ opacity: 0, scale: 0.94, y: -4 }}
+                  transition={{ type: "spring", stiffness: 480, damping: 30 }}
+                  className="absolute top-full right-0 z-40 mt-2 w-max origin-top-right rounded-lg border bg-card p-3 shadow-lg"
+                >
+                  <p className="mb-2.5 text-[13px] font-medium">Accent colour: {ACCENTS.find((a) => a.id === accent)?.label}</p>
+                  <div className="flex gap-2">
+                    {ACCENTS.map((a, i) => (
+                      <motion.button
+                        key={a.id} type="button" onClick={() => pickAccent(a.id)} aria-label={a.label} aria-pressed={accent === a.id} title={a.label}
+                        initial={{ scale: 0 }} animate={{ scale: 1 }} transition={{ type: "spring", stiffness: 500, damping: 22, delay: i * 0.03 }}
+                        whileHover={{ scale: 1.15 }} whileTap={{ scale: 0.88 }}
+                        className="relative grid size-8 place-items-center rounded-full outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
+                        style={{ background: `oklch(${dark ? 0.77 : 0.55} ${dark ? a.chroma * 0.72 : a.chroma} ${a.hue})` }}
+                      >
+                        {accent === a.id && <motion.span layoutId="accent-ring" className="absolute -inset-1 rounded-full border-2 border-foreground" transition={{ type: "spring", stiffness: 500, damping: 32 }} />}
+                      </motion.button>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           <Button variant="ghost" size="icon" onClick={toggleTheme} aria-label="Switch theme" title="Switch theme">
             <AnimatePresence mode="wait" initial={false}>
               <motion.span key={dark ? "d" : "l"} initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }} transition={{ duration: 0.18 }}>
