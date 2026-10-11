@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, Play, RefreshCw, Rss, Sun, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, Play, RefreshCw, Rss, SlidersHorizontal, Sun, X } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { TARGET, translate, translatedPage } from "@/lib/translate";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -90,7 +91,38 @@ export default function App() {
   const pods = section === "podcasts";
   const vids = section === "videos";
   const bySource = papers || pods || vids;
-  const inSection = useMemo(() => stories.filter((s) => (s.section || "news") === section), [stories, section]);
+  const [hidden, setHidden] = useState<Record<string, 1>>(() => store.get("aiwire.hidden", {}));
+  const [picker, setPicker] = useState(false);
+  const allInSection = useMemo(() => stories.filter((s) => (s.section || "news") === section), [stories, section]);
+  const inSection = useMemo(() => allInSection.filter((s) => !hidden[section + "|" + s.source]), [allInSection, hidden, section]);
+  // Every source of this section with its story count, grouped by topic for news.
+  const sourceGroups = useMemo(() => {
+    const groups = new Map<string, Map<string, number>>();
+    allInSection.forEach((s) => {
+      const g = section === "news" ? s.topic || "AI" : "";
+      if (!groups.has(g)) groups.set(g, new Map());
+      groups.get(g)!.set(s.source, (groups.get(g)!.get(s.source) || 0) + 1);
+    });
+    return [...groups.entries()]
+      .sort((a, b) => TOPICS.indexOf(a[0]) - TOPICS.indexOf(b[0]))
+      .map(([name, m]) => ({ name, sources: [...m.entries()].sort((a, b) => a[0].localeCompare(b[0])) }));
+  }, [allInSection, section]);
+  const sourceNames = useMemo(() => [...new Set(allInSection.map((s) => s.source))], [allInSection]);
+  const offCount = sourceNames.filter((n) => hidden[section + "|" + n]).length;
+  const setSources = (names: string[], on: boolean) => {
+    setHidden((h) => {
+      const n = { ...h };
+      names.forEach((name) => { if (on) delete n[section + "|" + name]; else n[section + "|" + name] = 1; });
+      store.set("aiwire.hidden", n);
+      return n;
+    });
+  };
+  useEffect(() => {
+    if (!picker) return;
+    const on = (e: KeyboardEvent) => { if (e.key === "Escape") setPicker(false); };
+    document.addEventListener("keydown", on);
+    return () => document.removeEventListener("keydown", on);
+  }, [picker]);
   const chips = useMemo(() => {
     const groups = bySource
       ? [...new Set(inSection.map((s) => s.source))].sort()
@@ -103,9 +135,9 @@ export default function App() {
   );
   const unreadBy = useMemo(() => {
     const n: Record<Section, number> = { news: 0, papers: 0, podcasts: 0, videos: 0 };
-    stories.forEach((s) => { if (!read[s.id]) n[s.section || "news"]++; });
+    stories.forEach((s) => { const sec = s.section || "news"; if (!read[s.id] && !hidden[sec + "|" + s.source]) n[sec]++; });
     return n;
-  }, [stories, read]);
+  }, [stories, read, hidden]);
   const pick = (id: Section) => { setSection(id); setFilter("All"); store.set("aiwire.section", id); if (desktop) setCurrent(null); };
   const story = useMemo(() => stories.find((s) => s.id === current) || null, [stories, current]);
 
@@ -277,6 +309,10 @@ export default function App() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-0.5">
+          <Button variant="ghost" size="icon" onClick={() => setPicker(true)} aria-label="Choose sources" title="Choose sources" className="relative">
+            <SlidersHorizontal />
+            {offCount > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" />}
+          </Button>
           <Button variant="ghost" size="icon" onClick={markAll} disabled={!visible.some((s) => !read[s.id])} aria-label="Mark all as read" title="Mark all as read">
             <CheckCheck />
           </Button>
@@ -326,7 +362,9 @@ export default function App() {
             </Empty>
           )}
           {status === "ready" && !visible.length && (
-            <Empty>{inSection.length ? "Nothing here. You have read everything in this view." : vids ? "No videos yet. Refresh in a little while." : pods ? "No episodes yet. Refresh in a little while." : papers ? "No papers yet. Refresh in a little while." : "No headlines yet. Refresh in a little while."}</Empty>
+            <Empty>{!inSection.length && allInSection.length ? (
+              <>Every source in this section is switched off.<Button variant="outline" size="sm" className="mt-4" onClick={() => setPicker(true)}><SlidersHorizontal /> Choose sources</Button></>
+            ) : inSection.length ? "Nothing here. You have read everything in this view." : vids ? "No videos yet. Refresh in a little while." : pods ? "No episodes yet. Refresh in a little while." : papers ? "No papers yet. Refresh in a little while." : "No headlines yet. Refresh in a little while."}</Empty>
           )}
           {status === "ready" && visible.length > 0 && (
             <div key={section + filter}>
@@ -429,6 +467,51 @@ export default function App() {
               </div>
               <audio key={playing.id} src={playing.audio} controls autoPlay preload="metadata" className="mt-1 h-10 w-full" />
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {picker && (
+          <motion.div key="picker" className="fixed inset-0 z-40" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.18 }}>
+            <div className="absolute inset-0 bg-black/45" onClick={() => setPicker(false)} />
+            <motion.div
+              role="dialog" aria-modal="true" aria-label="Choose sources"
+              initial={desktop ? { x: "100%" } : { y: "100%" }} animate={{ x: 0, y: 0 }} exit={desktop ? { x: "100%" } : { y: "100%" }}
+              transition={{ type: "spring", stiffness: 380, damping: 38 }}
+              className={cn("absolute flex flex-col bg-card shadow-2xl",
+                desktop ? "inset-y-0 right-0 w-[380px] border-l" : "inset-x-0 bottom-0 max-h-[85dvh] rounded-t-xl border-t pb-[env(safe-area-inset-bottom)]")}
+            >
+              <div className="flex items-start gap-2 border-b px-4 py-3">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-base font-semibold">{SECTIONS.find((t) => t.id === section)?.label} sources</h2>
+                  <p className="text-[13px] text-muted-foreground">{sourceNames.length - offCount} of {sourceNames.length} switched on. Saved on this device.</p>
+                </div>
+                <Button variant="ghost" size="icon" onClick={() => setPicker(false)} aria-label="Close"><X /></Button>
+              </div>
+              <div className="flex gap-2 border-b px-4 py-2">
+                <Button variant="outline" size="sm" onClick={() => setSources(sourceNames, true)} disabled={offCount === 0}>Select all</Button>
+                <Button variant="outline" size="sm" onClick={() => setSources(sourceNames, false)} disabled={offCount === sourceNames.length}>Clear all</Button>
+              </div>
+              <div className="thin-scroll min-h-0 flex-1 overflow-y-auto py-1">
+                {!sourceNames.length && <Empty>No sources have loaded for this section yet.</Empty>}
+                {sourceGroups.map((g) => (
+                  <div key={g.name}>
+                    {g.name && <div className="px-4 pt-3 pb-1 font-mono text-[11px] tracking-[0.08em] text-muted-foreground uppercase">{g.name}</div>}
+                    {g.sources.map(([name, count]) => {
+                      const on = !hidden[section + "|" + name];
+                      return (
+                        <label key={name} className="flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors hover:bg-accent/60">
+                          <Checkbox checked={on} onCheckedChange={(v) => setSources([name], v === true)} />
+                          <span className={cn("min-w-0 flex-1 truncate text-sm transition-colors", !on && "text-muted-foreground line-through decoration-muted-foreground/50")}>{name}</span>
+                          <span className="font-mono text-xs text-muted-foreground tabular-nums">{count}</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>
