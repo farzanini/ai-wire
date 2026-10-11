@@ -104,7 +104,7 @@ async function load(feed) {
   return items;
 }
 
-// YouTube's feeds carry no video length, so read it from each watch page.
+// YouTube's feeds carry no video length, so ask the YouTube Data API (needs the YT_API_KEY secret).
 // Lengths found on earlier runs are reused from the live site, so only new videos are looked up.
 async function videoLengths(stories) {
   const vids = stories.filter((s) => s.video);
@@ -117,47 +117,29 @@ async function videoLengths(stories) {
     } catch { /* first run, or the site is unreachable */ }
   }
   const todo = vids.filter((s) => !s.duration);
-  const need = todo.length;
-  const diag = { reused: vids.length - need, need, found: 0, via: {}, sample: null };
-  const fmt = (secs) => {
-    const h = Math.floor(secs / 3600), m = Math.floor((secs % 3600) / 60), sec = String(secs % 60).padStart(2, "0");
-    return h ? `${h}:${String(m).padStart(2, "0")}:${sec}` : `${m}:${sec}`;
-  };
-  const ua = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36";
-  const ways = {
-    async page(id) {
-      const res = await fetch("https://www.youtube.com/watch?v=" + id, {
-        headers: { "user-agent": ua, "accept-language": "en-US,en;q=0.9", cookie: "CONSENT=YES+1; SOCS=CAI" }, signal: AbortSignal.timeout(15000),
-      });
-      const html = await res.text();
-      const iso = html.match(/itemprop="duration" content="PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?"/);
-      const secs = +(html.match(/"lengthSeconds":"(\d+)"/) || [])[1] || Math.round(+(html.match(/"approxDurationMs":"(\d+)"/) || [])[1] / 1000)
-        || (iso ? (+iso[1] || 0) * 3600 + (+iso[2] || 0) * 60 + (+iso[3] || 0) : 0);
-      if (!secs && !diag.sample) diag.sample = { way: "page", http: res.status, url: res.url.slice(0, 80), bytes: html.length, title: (html.match(/<title>([^<]*)/) || [])[1] };
-      return secs;
-    },
-    async player(id) {
-      const res = await fetch("https://www.youtube.com/youtubei/v1/player?prettyPrint=false", {
-        method: "POST", headers: { "content-type": "application/json", "user-agent": ua }, signal: AbortSignal.timeout(15000),
-        body: JSON.stringify({ videoId: id, context: { client: { clientName: "WEB", clientVersion: "2.20240726.00.00", hl: "en" } } }),
-      });
+  const info = { reused: vids.length - todo.length, need: todo.length, found: 0 };
+  const key = process.env.YT_API_KEY;
+  if (!key) { info.note = "No YT_API_KEY secret set, so new video lengths were not looked up."; console.log("Video lengths:", JSON.stringify(info)); return info; }
+  for (let i = 0; i < todo.length; i += 50) {
+    const batch = todo.slice(i, i + 50);
+    try {
+      const res = await fetch("https://www.googleapis.com/youtube/v3/videos?part=contentDetails&maxResults=50&id=" + batch.map((s) => s.video).join(",") + "&key=" + encodeURIComponent(key), { signal: AbortSignal.timeout(20000) });
       const d = await res.json();
-      return +d?.videoDetails?.lengthSeconds || 0;
-    },
-  };
-  const worker = async () => {
-    for (let s; (s = todo.pop()); ) {
-      for (const [name, way] of Object.entries(ways)) {
-        try {
-          const secs = await way(s.video);
-          if (secs > 0) { s.duration = fmt(secs); diag.found++; diag.via[name] = (diag.via[name] || 0) + 1; break; }
-        } catch (e) { if (!diag.sample) diag.sample = { way: name, error: String(e?.message || e) }; }
+      if (!res.ok) { info.error = `HTTP ${res.status}: ${d?.error?.errors?.[0]?.reason || d?.error?.status || "request refused"}`; break; }
+      const byId = new Map((d.items || []).map((v) => [v.id, v.contentDetails?.duration || ""]));
+      for (const s of batch) {
+        const m = (byId.get(s.video) || "").match(/^P(?:(\d+)D)?T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/);
+        if (!m) continue;
+        const secs = (+m[1] || 0) * 86400 + (+m[2] || 0) * 3600 + (+m[3] || 0) * 60 + (+m[4] || 0);
+        if (!secs) continue;                       // live streams and premieres report zero
+        const h = Math.floor(secs / 3600), min = Math.floor((secs % 3600) / 60), sec = String(secs % 60).padStart(2, "0");
+        s.duration = h ? `${h}:${String(min).padStart(2, "0")}:${sec}` : `${min}:${sec}`;
+        info.found++;
       }
-    }
-  };
-  await Promise.all(Array.from({ length: 5 }, worker));
-  console.log("Video lengths:", JSON.stringify(diag));
-  return diag;
+    } catch (e) { info.error = String(e?.message || e); break; }
+  }
+  console.log("Video lengths:", JSON.stringify(info));
+  return info;
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

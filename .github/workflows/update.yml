@@ -32,6 +32,8 @@ jobs:
       - run: npm run build
       - name: Fetch feeds
         run: node scripts/fetch-feeds.mjs
+        env:
+          YT_API_KEY: ${{ secrets.YT_API_KEY }}
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
