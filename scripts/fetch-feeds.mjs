@@ -5,7 +5,7 @@ import { createHash } from "node:crypto";
 
 const ROOT = new URL("..", import.meta.url);
 const FEEDS = JSON.parse(await readFile(new URL("feeds.json", ROOT), "utf8"));
-const KEEP_DAYS = { news: 14, papers: 120 };
+const KEEP_DAYS = { news: 14, papers: 120, podcasts: 45 };
 const PER_FEED = 40;
 const SUMMARY_MAX = 700;
 
@@ -62,7 +62,8 @@ export function parse(xml, feed) {
   const out = [];
   for (const b of blocks.slice(0, PER_FEED)) {
     const title = text(tag(b, ["title"]));
-    const url = link(b).trim();
+    const audio = decode((b.match(/<enclosure\b[^>]*\burl=["']([^"']+)["']/i) || [])[1] || "").trim().replace(/^http:/, "https:");
+    const url = link(b).trim() || (section === "podcasts" ? audio : "");
     const when = new Date(text(tag(b, ["pubDate", "published", "updated", "dc:date", "prism:publicationDate"])));
     if (!title || !/^https?:\/\//.test(url) || isNaN(when)) continue;
     let summary = text(tag(b, ["description", "summary", "content:encoded", "content"]));
@@ -75,6 +76,12 @@ export function parse(xml, feed) {
     if (section === "papers") {
       const names = [...b.matchAll(/<(dc:creator|author)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi)].map((m) => text(tag(m[2], ["name"]) || m[2])).filter(Boolean);
       if (names.length) item.authors = names.length > 4 ? names.slice(0, 3).join(", ") + " et al." : names.join(", ");
+    } else if (section === "podcasts") {
+      if (!/^https:\/\//.test(audio)) continue;          // episodes without playable audio are skipped
+      item.audio = audio;
+      const d = text(tag(b, ["itunes:duration"]));
+      const secs = /^\d+$/.test(d) ? +d : d.split(":").reduce((a, n) => a * 60 + (+n || 0), 0);
+      if (secs > 0) item.duration = secs >= 3600 ? `${Math.floor(secs / 3600)} h ${Math.round((secs % 3600) / 60)} min` : `${Math.max(1, Math.round(secs / 60))} min`;
     } else item.topic = feed.topic || "AI";
     out.push(item);
   }
