@@ -6,7 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-type Story = { id: string; title: string; source: string; url: string; date: string; summary: string };
+type Section = "news" | "papers";
+type Story = { id: string; title: string; source: string; url: string; date: string; summary: string; section?: Section; topic?: string; authors?: string };
+
+const TOPICS = ["AI", "Machine learning", "Big data", "Business"];
+const SECTIONS: { id: Section; label: string }[] = [{ id: "news", label: "News" }, { id: "papers", label: "Papers" }];
 
 const store = {
   get<T>(key: string, fallback: T): T {
@@ -42,6 +46,7 @@ export default function App() {
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [busy, setBusy] = useState(false);
   const [updated, setUpdated] = useState("");
+  const [section, setSection] = useState<Section>(() => (store.get<string>("aiwire.section", "news") === "papers" ? "papers" : "news"));
   const [filter, setFilter] = useState("All");
   const [current, setCurrent] = useState<string | null>(null);
   const [read, setRead] = useState<Record<string, 1>>(() => store.get("aiwire.read", {}));
@@ -76,13 +81,24 @@ export default function App() {
     document.querySelector('meta[name="theme-color"]')?.setAttribute("content", dark ? "#16181d" : "#ffffff");
   }, [dark]);
 
-  const sources = useMemo(() => [...new Set(stories.map((s) => s.source))].sort(), [stories]);
-  const chips = useMemo(() => ["All", "Unread", ...sources], [sources]);
+  const papers = section === "papers";
+  const inSection = useMemo(() => stories.filter((s) => (s.section || "news") === section), [stories, section]);
+  const chips = useMemo(() => {
+    const groups = papers
+      ? [...new Set(inSection.map((s) => s.source))].sort()
+      : TOPICS.filter((t) => inSection.some((s) => (s.topic || "AI") === t));
+    return ["All", "Unread", ...groups];
+  }, [inSection, papers]);
   const visible = useMemo(
-    () => stories.filter((s) => (filter === "All" ? true : filter === "Unread" ? !read[s.id] || s.id === current : s.source === filter)),
-    [stories, filter, read, current]
+    () => inSection.filter((s) => (filter === "All" ? true : filter === "Unread" ? !read[s.id] || s.id === current : (papers ? s.source : s.topic || "AI") === filter)),
+    [inSection, filter, read, current, papers]
   );
-  const unread = useMemo(() => stories.filter((s) => !read[s.id]).length, [stories, read]);
+  const unreadBy = useMemo(() => {
+    const n: Record<Section, number> = { news: 0, papers: 0 };
+    stories.forEach((s) => { if (!read[s.id]) n[s.section || "news"]++; });
+    return n;
+  }, [stories, read]);
+  const pick = (id: Section) => { setSection(id); setFilter("All"); store.set("aiwire.section", id); if (desktop) setCurrent(null); };
   const story = useMemo(() => stories.find((s) => s.id === current) || null, [stories, current]);
 
   const persist = useCallback((next: Record<string, 1>) => {
@@ -138,21 +154,25 @@ export default function App() {
     >
       <Badge variant="secondary" className="font-mono uppercase tracking-wider">{story.source}</Badge>
       <h1 className="mt-4 font-serif text-[clamp(1.7rem,3.4vw,2.35rem)] leading-[1.14] font-semibold text-balance">{story.title}</h1>
-      <p className="mt-3 border-b pb-5 font-mono text-xs text-muted-foreground">{dayLabel(story.date)} · {clock(story.date)}</p>
+      <p className="mt-3 border-b pb-5 font-mono text-xs text-muted-foreground">
+        {story.authors ? story.authors + " · " : ""}{dayLabel(story.date)}{story.section === "papers" ? "" : " · " + clock(story.date)}
+      </p>
       <motion.p
         initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.12, duration: 0.4 }}
         className="mt-6 font-serif text-[1.2rem] leading-[1.62]"
       >
-        {story.summary || "The publisher's feed gave no excerpt for this story."}
+        {story.summary || (story.section === "papers" ? "The journal's feed gave no abstract for this paper." : "The publisher's feed gave no excerpt for this story.")}
       </motion.p>
       <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.35, ease }} className="mt-8">
         <Button asChild size="lg" className="group">
           <a href={story.url} target="_blank" rel="noopener">
-            Read the full story at {story.source}
+            {story.section === "papers" ? "Read the paper at " : "Read the full story at "}{story.source}
             <ArrowUpRight className="transition-transform group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />
           </a>
         </Button>
-        <p className="mt-4 text-[13px] text-muted-foreground">This is the publisher's own excerpt. The button opens the complete article on their site.</p>
+        <p className="mt-4 text-[13px] text-muted-foreground">{story.section === "papers"
+            ? "This is the journal's own abstract or excerpt. The button opens the published paper on the journal's site."
+            : "This is the publisher's own excerpt. The button opens the complete article on their site."}</p>
       </motion.div>
       <p className="mt-10 hidden font-mono text-xs text-muted-foreground md:block">
         <Kbd>J</Kbd> next · <Kbd>K</Kbd> previous · <Kbd>O</Kbd> open full story
@@ -170,20 +190,25 @@ export default function App() {
         >
           <Rss className="size-4" strokeWidth={2.6} />
         </motion.span>
-        <span className="text-base font-semibold tracking-tight">AI Wire</span>
-        <div className="ml-auto flex items-center gap-1">
-          <AnimatePresence mode="popLayout" initial={false}>
-            {status === "ready" && (
-              <motion.span
-                key={unread}
-                initial={{ opacity: 0, y: -6 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: 6 }}
-                transition={{ duration: 0.2 }}
-                className="mr-1 font-mono text-xs text-muted-foreground tabular-nums"
-              >
-                {unread} unread
-              </motion.span>
-            )}
-          </AnimatePresence>
+        <span className="hidden text-base font-semibold tracking-tight sm:inline">AI Wire</span>
+        <div role="tablist" aria-label="Section" className="ml-1 flex rounded-lg bg-muted p-0.5 sm:ml-3">
+          {SECTIONS.map((t) => (
+            <button
+              key={t.id} type="button" role="tab" aria-selected={section === t.id} onClick={() => pick(t.id)}
+              className={cn("relative rounded-md px-3 py-1 text-[13px] font-medium transition-colors outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50",
+                section === t.id ? "text-foreground" : "text-muted-foreground hover:text-foreground")}
+            >
+              {section === t.id && (
+                <motion.span layoutId="tab" className="absolute inset-0 rounded-md bg-card shadow-sm" transition={{ type: "spring", stiffness: 420, damping: 34 }} />
+              )}
+              <span className="relative flex items-center gap-1.5">
+                {t.label}
+                {status === "ready" && unreadBy[t.id] > 0 && <span className="font-mono text-[11px] text-primary tabular-nums">{unreadBy[t.id]}</span>}
+              </span>
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto flex items-center gap-0.5">
           <Button variant="ghost" size="icon" onClick={markAll} disabled={!visible.some((s) => !read[s.id])} aria-label="Mark all as read" title="Mark all as read">
             <CheckCheck />
           </Button>
@@ -233,10 +258,10 @@ export default function App() {
             </Empty>
           )}
           {status === "ready" && !visible.length && (
-            <Empty>{stories.length ? "Nothing here. You have read everything in this view." : "No headlines yet. Refresh in a little while."}</Empty>
+            <Empty>{inSection.length ? "Nothing here. You have read everything in this view." : papers ? "No papers yet. Refresh in a little while." : "No headlines yet. Refresh in a little while."}</Empty>
           )}
           {status === "ready" && visible.length > 0 && (
-            <div key={filter}>
+            <div key={section + filter}>
               {visible.map((s, i) => {
                 const label = dayLabel(s.date);
                 const head = label !== lastDay;
@@ -267,7 +292,7 @@ export default function App() {
                       </span>
                       <span className="min-w-0">
                         <span className={cn("block leading-snug text-pretty transition-colors duration-300", isRead ? "font-normal text-muted-foreground" : "font-semibold")}>{s.title}</span>
-                        <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {clock(s.date)}</span>
+                        <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {papers ? (s.authors || "Peer-reviewed") : clock(s.date)}</span>
                       </span>
                     </motion.button>
                   </div>
