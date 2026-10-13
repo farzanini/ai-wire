@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "motion/react";
-import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, Palette, Play, RefreshCw, Rss, SlidersHorizontal, Sun, X } from "lucide-react";
+import { ArrowLeft, ArrowUpRight, CheckCheck, Languages, LoaderCircle, Moon, Palette, Play, RefreshCw, Rss, Search, SlidersHorizontal, Sun, X } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TARGET, translate, translatedPage } from "@/lib/translate";
 import { Button } from "@/components/ui/button";
@@ -21,6 +21,19 @@ const ACCENTS = [
   { id: "violet", label: "Violet", hue: 310, chroma: 0.2 },
   { id: "graphite", label: "Graphite", hue: 255, chroma: 0.02 },
 ];
+const fold = (t: string) => t.normalize("NFKD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+const terms = (q: string) => fold(q).split(/\s+/).filter((w) => w.length > 0);
+function matches(s: Story, words: string[]) {
+  if (!words.length) return true;
+  const hay = fold([s.title, s.summary, s.source, s.authors || "", s.topic || ""].join(" "));
+  return words.every((w) => hay.includes(w));
+}
+function Highlight({ text, words }: { text: string; words: string[] }) {
+  if (!words.length) return <>{text}</>;
+  const esc = words.map((w) => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|");
+  const parts = text.split(new RegExp(`(${esc})`, "gi"));
+  return <>{parts.map((p, i) => (i % 2 ? <mark key={i} className="rounded-sm bg-primary/20 px-0.5 text-inherit">{p}</mark> : p))}</>;
+}
 const SECTIONS: { id: Section; label: string }[] = [{ id: "news", label: "News" }, { id: "papers", label: "Papers" }, { id: "podcasts", label: "Podcasts" }, { id: "videos", label: "Videos" }];
 
 const store = {
@@ -102,6 +115,10 @@ export default function App() {
   const bySource = papers || pods || vids;
   const [hidden, setHidden] = useState<Record<string, 1>>(() => store.get("aiwire.hidden", {}));
   const [picker, setPicker] = useState(false);
+  const [query, setQuery] = useState("");
+  const [searching, setSearching] = useState(false);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const closeSearch = () => { setQuery(""); setSearching(false); };
   const [accent, setAccent] = useState(() => { const a = store.get<string>("aiwire.accent", "indigo"); return ACCENTS.some((x) => x.id === a) ? a : "indigo"; });
   const [palette, setPalette] = useState(false);
   const paletteRef = useRef<HTMLDivElement>(null);
@@ -149,10 +166,18 @@ export default function App() {
       : TOPICS.filter((t) => inSection.some((s) => (s.topic || "AI") === t));
     return ["All", "Unread", ...groups];
   }, [inSection, bySource]);
+  const words = useMemo(() => terms(query), [query]);
   const visible = useMemo(
-    () => inSection.filter((s) => (filter === "All" ? true : filter === "Unread" ? !read[s.id] || s.id === current : (bySource ? s.source : s.topic || "AI") === filter)),
-    [inSection, filter, read, current, bySource]
+    () => inSection.filter((s) => matches(s, words) && (filter === "All" ? true : filter === "Unread" ? !read[s.id] || s.id === current : (bySource ? s.source : s.topic || "AI") === filter)),
+    [inSection, filter, read, current, bySource, words]
   );
+  // How many matches the search has in the other sections, so you can jump there.
+  const elsewhere = useMemo(() => {
+    if (!words.length) return [];
+    return SECTIONS.filter((t) => t.id !== section)
+      .map((t) => ({ ...t, n: stories.filter((s) => (s.section || "news") === t.id && !hidden[t.id + "|" + s.source] && matches(s, words)).length }))
+      .filter((t) => t.n > 0);
+  }, [words, stories, section, hidden]);
   const unreadBy = useMemo(() => {
     const n: Record<Section, number> = { news: 0, papers: 0, podcasts: 0, videos: 0 };
     stories.forEach((s) => { const sec = s.section || "news"; if (!read[s.id] && !hidden[sec + "|" + s.source]) n[sec]++; });
@@ -185,6 +210,9 @@ export default function App() {
   useEffect(() => {
     const on = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const el = e.target as HTMLElement;
+      if (el.closest("input, textarea, [contenteditable]")) return;
+      if (e.key === "/") { e.preventDefault(); setSearching(true); setTimeout(() => searchRef.current?.focus(), 30); return; }
       const k = e.key.toLowerCase();
       if (k === "j" || k === "k") {
         const i = visible.findIndex((s) => s.id === current);
@@ -329,6 +357,12 @@ export default function App() {
           ))}
         </div>
         <div className="ml-auto flex items-center gap-0.5">
+          <Button
+            variant={searching ? "secondary" : "ghost"} size="icon" aria-label="Search" title="Search ( / )" aria-expanded={searching}
+            onClick={() => { if (searching) closeSearch(); else { setSearching(true); setTimeout(() => searchRef.current?.focus(), 30); } }}
+          >
+            <Search />
+          </Button>
           <Button variant="ghost" size="icon" onClick={() => setPicker(true)} aria-label="Choose sources" title="Choose sources" className="relative">
             <SlidersHorizontal />
             {offCount > 0 && <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-primary ring-2 ring-card" />}
@@ -379,6 +413,46 @@ export default function App() {
         </div>
       </header>
 
+      <AnimatePresence initial={false}>
+        {searching && (
+          <motion.div
+            key="search" initial={{ height: 0, opacity: 0 }} animate={{ height: "auto", opacity: 1 }} exit={{ height: 0, opacity: 0 }}
+            transition={{ duration: 0.22, ease }} className="overflow-hidden border-b bg-card"
+          >
+            <div className="px-4 pt-2.5 pb-2">
+              <div className="relative">
+                <Search className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+                <input
+                  ref={searchRef} id="search" type="search" value={query} onChange={(e) => setQuery(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === "Escape") closeSearch(); }}
+                  placeholder={"Search " + (SECTIONS.find((t) => t.id === section)?.label || "").toLowerCase() + " by title, topic or source"}
+                  aria-label="Search" autoComplete="off" enterKeyHint="search"
+                  className="h-10 w-full rounded-md border bg-background pr-9 pl-9 text-[15px] shadow-xs outline-none transition-[box-shadow] placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-[3px] focus-visible:ring-ring/40 [&::-webkit-search-cancel-button]:hidden"
+                />
+                {query && (
+                  <button type="button" onClick={() => { setQuery(""); searchRef.current?.focus(); }} aria-label="Clear search"
+                    className="absolute top-1/2 right-2 grid size-6 -translate-y-1/2 place-items-center rounded text-muted-foreground hover:text-foreground">
+                    <X className="size-4" />
+                  </button>
+                )}
+              </div>
+              <AnimatePresence initial={false}>
+                {words.length > 0 && (
+                  <motion.p initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] text-muted-foreground">
+                    <span className="tabular-nums">{visible.length} {visible.length === 1 ? "match" : "matches"} here</span>
+                    {elsewhere.map((t) => (
+                      <button key={t.id} type="button" onClick={() => pick(t.id)} className="rounded-md bg-secondary px-2 py-0.5 font-medium text-secondary-foreground transition-colors hover:bg-accent">
+                        {t.n} in {t.label}
+                      </button>
+                    ))}
+                  </motion.p>
+                )}
+              </AnimatePresence>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       <nav aria-label="Filter headlines" className="no-scrollbar flex gap-1 overflow-x-auto border-b bg-card px-4 py-2">
         {chips.map((name) => (
           <button
@@ -414,6 +488,8 @@ export default function App() {
           {status === "ready" && !visible.length && (
             <Empty>{!inSection.length && allInSection.length ? (
               <>Every source in this section is switched off.<Button variant="outline" size="sm" className="mt-4" onClick={() => setPicker(true)}><SlidersHorizontal /> Choose sources</Button></>
+            ) : words.length ? (
+              <>No matches for "{query.trim()}" in this view.{elsewhere.length > 0 && <> Try {elsewhere.map((t) => `${t.label} (${t.n})`).join(" or ")}.</>}</>
             ) : inSection.length ? "Nothing here. You have read everything in this view." : vids ? "No videos yet. Refresh in a little while." : pods ? "No episodes yet. Refresh in a little while." : papers ? "No papers yet. Refresh in a little while." : "No headlines yet. Refresh in a little while."}</Empty>
           )}
           {status === "ready" && visible.length > 0 && (
@@ -454,7 +530,7 @@ export default function App() {
                           </span>
                         )}
                         <span className="min-w-0">
-                        <span className={cn("block leading-snug text-pretty transition-colors duration-300", isRead ? "font-normal text-muted-foreground" : "font-semibold")}>{s.title}</span>
+                        <span className={cn("block leading-snug text-pretty transition-colors duration-300", isRead ? "font-normal text-muted-foreground" : "font-semibold")}><Highlight text={s.title} words={words} /></span>
                         <span className="mt-1 block font-mono text-[11.5px] text-muted-foreground">{s.source} · {vids ? (s.duration ? s.duration + " · " + dayLabel(s.date) : dayLabel(s.date)) : pods ? (s.duration || "Episode") : papers ? (s.authors || "Peer-reviewed") : clock(s.date)}</span>
                       </span>
                       </span>
